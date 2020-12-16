@@ -15,6 +15,7 @@ from unet import UNet
 from torch.utils.tensorboard import SummaryWriter
 from utils.dataset import BasicDataset
 from torch.utils.data import DataLoader, random_split
+from torch.nn.functional import avg_pool2d
 
 dir_img = 'data/imgs/'
 dir_mask = 'data/masks/'
@@ -73,10 +74,37 @@ def train_net(net,
 
                 imgs = imgs.to(device=device, dtype=torch.float32)
                 mask_type = torch.float32 if net.n_classes == 1 else torch.long
-                true_masks = true_masks.to(device=device, dtype=mask_type)
 
-                masks_pred = net(imgs)
-                loss = criterion(masks_pred, true_masks)
+                mask_4 = true_masks
+                mask_3 = avg_pool2d(mask_4, kernel_size=(1, 1), stride=2)
+                mask_2 = avg_pool2d(mask_3, kernel_size=(1, 1), stride=2)
+                mask_1 = avg_pool2d(mask_2, kernel_size=(1, 1), stride=2)
+
+                # print("mask_4", mask_4.shape)
+                # print("mask_3", mask_3.shape)
+                # print("mask_2", mask_2.shape)
+                # print("mask_1", mask_1.shape)
+
+                mask_4 = mask_4.to(device=device, dtype=mask_type)
+                mask_3 = mask_3.to(device=device, dtype=mask_type)
+                mask_2 = mask_2.to(device=device, dtype=mask_type)
+                mask_1 = mask_1.to(device=device, dtype=mask_type)
+                # true_masks = true_masks.to(device=device, dtype=mask_type)
+
+                # masks_pred = net(imgs)
+                [z1, z2, z3, z4] = net(imgs)
+
+                # print("z4", z4.shape)
+                # print("z3", z3.shape)
+                # print("z2", z2.shape)
+                # print("z1", z1.shape)                
+
+                loss_1 = criterion(z1, mask_1)
+                loss_2 = criterion(z2, mask_2)
+                loss_3 = criterion(z3, mask_3)
+                loss_4 = criterion(z4, mask_4)
+                # loss = criterion(masks_pred, true_masks)
+                loss = loss_1 + loss_2 + loss_3 + loss_4
                 epoch_loss += loss.item()
                 writer.add_scalar('Loss/train', loss.item(), global_step)
 
@@ -108,7 +136,7 @@ def train_net(net,
                     writer.add_images('images', imgs, global_step)
                     if net.n_classes == 1:
                         writer.add_images('masks/true', true_masks, global_step)
-                        writer.add_images('masks/pred', torch.sigmoid(masks_pred) > 0.5, global_step)
+                        writer.add_images('masks/pred', torch.sigmoid(z4) > 0.5, global_step)
 
         if save_cp:
             try:
